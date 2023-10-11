@@ -116,7 +116,7 @@
       ansible.builtin.lineinfile:
         path: /etc/ckan/default/ckan.ini
         regexp: ^(ckan.site_id =).*
-        line: \1 uu-ckan
+        line: \1 doy-ckan
         backrefs: yes
 
     - name: Set site_url in CKAN config
@@ -124,7 +124,7 @@
       ansible.builtin.lineinfile:
         path: /etc/ckan/default/ckan.ini
         regexp: ^(ckan.site_url =).*
-        line: \1 http://uu-ckan.test
+        line: \1 http://doy-ckan.test
         backrefs: yes
 
     - name: Set site_title in CKAN config
@@ -132,7 +132,7 @@
       ansible.builtin.lineinfile:
         path: /etc/ckan/default/ckan.ini
         regexp: ^(ckan.site_title =).*
-        line: \1 uu-ckan
+        line: \1 doy-ckan
         backrefs: yes
 
     - name: Set site_description in CKAN config
@@ -140,14 +140,14 @@
       ansible.builtin.lineinfile:
         path: /etc/ckan/default/ckan.ini
         regexp: ^(ckan.site_description =).*
-        line: \1 The UU CKAN catalog aggregates metadata of research data published at Utrecht University.
+        line: \1 The Dynamics of Youth CKAN catalog aggregates metadata of research data published by the strategic theme Dynamics of Youth at Utrecht University.
         backrefs: yes
 
     - name: Set site_intro_text in CKAN config
       become: yes
       ansible.builtin.lineinfile:
         path: /etc/ckan/default/ckan.ini
-        line: ckan.site_intro_text = The UU CKAN catalog aggregates metadata of research data published at Utrecht University.
+        line: ckan.site_intro_text = The Dynamics of Youth CKAN catalog aggregates metadata of research data published by the strategic theme Dynamics of Youth at Utrecht University.
         insertafter: ^ckan\.site_description =.*
 
     - name: Set ckan.dataset.create_on_ui_requires_resources to false in CKAN config, increase search facets limit, and add additional public directory
@@ -203,7 +203,7 @@
         virtualenv: /usr/lib/ckan/default
         editable: yes
 
-    # An SSH keypair with access to the uu-ckan repository should be placed in the provisioning/files/
+    # An SSH keypair with access to the doy-ckan repository should be placed in the provisioning/files/
     # directory. The filenames of the keypair files must begin with id_ (e.g. id_rsa + id_rsa.pub).
     # It is recommended, as a security precaution, to generate a dedicated CD² keypair (e.g. using
     # ssh-keygen) and to restrict it's access to the cd2 repository.

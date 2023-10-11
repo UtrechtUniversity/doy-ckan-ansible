@@ -15,7 +15,7 @@ Vagrant.configure("2") do |config|
   # Disable synced folder (enabled by default, but we don't need it)
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
-  config.vm.hostname = "uu-ckan"
+  config.vm.hostname = "doy-ckan"
 
   config.vm.provider "virtualbox" do |vb|
     vb.gui = false
@@ -23,7 +23,7 @@ Vagrant.configure("2") do |config|
     vb.memory = "4096"
     vb.cpus = "4"
     
-    vb.name = "uu-ckan"
+    vb.name = "doy-ckan"
   end
 
   config.vm.provision "ansible" do |ansible|
