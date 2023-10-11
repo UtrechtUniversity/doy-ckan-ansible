@@ -1,0 +1,319 @@
+- hosts: all
+
+  tasks:
+    - name: Add Nodesource APT repository key
+      become: yes
+      apt_key:
+        url: "https://deb.nodesource.com/gpgkey/nodesource.gpg.key"
+        state: present
+
+    - name: Add Nodesource APT repository
+      become: yes
+      apt_repository:
+        repo: "deb https://deb.nodesource.com/node_18.x bullseye main"
+        state: present
+
+    - name: Update packages
+      become: yes
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: "yes"
+
+    - name: Install packages
+      become: yes
+      ansible.builtin.apt:
+        name: [git, libpq5, redis-server, nginx, supervisor, postgresql, python3-psycopg2, solr-tomcat, pipenv, nodejs]
+        state: present
+
+    - name: Remove packages
+      become: yes
+      ansible.builtin.apt:
+        name: apache2
+        purge: yes
+        autoremove: yes
+        state: absent
+
+    - name: Install Less.js from the NPM registry
+      become: yes
+      community.general.npm:
+        name: less
+        global: yes
+
+    - name: Get CKAN package
+      ansible.builtin.get_url:
+        url: https://packaging.ckan.org/python-ckan_2.9-py3-focal_amd64.deb
+        dest: /tmp/
+
+    - name: Install CKAN package
+      become: yes
+      ansible.builtin.apt:
+        deb: /tmp/python-ckan_2.9-py3-focal_amd64.deb
+
+    - name: Allow PostgreSQL administrative access from Ansible
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/postgresql/12/main/pg_hba.conf
+        regexp: (local   all             postgres                                )peer$
+        line: \1trust
+        backrefs: yes
+
+    - name: Restart PostgreSQL to effectuate administrative access from Ansible
+      become: yes
+      ansible.builtin.systemd:
+        name: postgresql
+        state: reloaded
+
+    - name: Create ckan_default PostgreSQL user
+      community.postgresql.postgresql_user:
+        name: ckan_default
+        password: postgrespass
+
+    - name: Create ckan_default database
+      community.postgresql.postgresql_db:
+        name: ckan_default
+        owner: ckan_default
+
+    - name: Set database, database user and database user password in CKAN config
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        regexp: ^(sqlalchemy.url =).*
+        line: \1 postgresql://ckan_default:postgrespass@localhost/ckan_default
+        backrefs: yes
+
+    - name: Change default Tomcat port
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/tomcat9/server.xml
+        regexp: (<Connector port=")8080(" protocol="HTTP/1.1")
+        line: \g<1>8983\g<2>
+        backrefs: yes
+
+    - name: Replace default Solr schema file
+      become: yes
+      file:
+        src: /usr/lib/ckan/default/src/ckan/ckan/config/solr/schema.xml
+        dest: /etc/solr/conf/schema.xml
+        state: link
+        force: yes
+
+    - name: Restart Tomcat
+      become: yes
+      ansible.builtin.systemd:
+        name: tomcat9
+        state: restarted
+
+    - name: Set Solr URL in CKAN config
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        regexp: ^#solr_url =.*
+        line: solr_url = http://127.0.0.1:8983/solr
+        backrefs: yes
+
+    - name: Set site_id in CKAN config
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        regexp: ^(ckan.site_id =).*
+        line: \1 uu-ckan
+        backrefs: yes
+
+    - name: Set site_url in CKAN config
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        regexp: ^(ckan.site_url =).*
+        line: \1 http://uu-ckan.test
+        backrefs: yes
+
+    - name: Set site_title in CKAN config
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        regexp: ^(ckan.site_title =).*
+        line: \1 uu-ckan
+        backrefs: yes
+
+    - name: Set site_description in CKAN config
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        regexp: ^(ckan.site_description =).*
+        line: \1 The UU CKAN catalog aggregates metadata of research data published at Utrecht University.
+        backrefs: yes
+
+    - name: Set site_intro_text in CKAN config
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        line: ckan.site_intro_text = The UU CKAN catalog aggregates metadata of research data published at Utrecht University.
+        insertafter: ^ckan\.site_description =.*
+
+    - name: Set ckan.dataset.create_on_ui_requires_resources to false in CKAN config, increase search facets limit, and add additional public directory
+      become: yes
+      ansible.builtin.blockinfile:
+        path: /etc/ckan/default/ckan.ini
+        insertbefore: ^## Datapusher settings$
+        marker: "# {mark} ANSIBLE MANAGED FORM SETTINGS BLOCK"
+        block: |
+          ## Form settings
+          ckan.dataset.create_on_ui_requires_resources = false
+          ## Search facet settings
+          search.facets.limit = 500
+          ## Collect dataset visits
+          ckan.tracking_enabled = true
+          ## Add msl-ckan public directory as extra public path
+          extra_public_paths = /usr/lib/ckan/default/src/ckanext-msl-ckan/ckanext/msl_ckan/public
+
+    - name: Set ckan.dataset.create_on_ui_requires_resources to false in CKAN config (proper formatting)
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        insertafter: "# END ANSIBLE MANAGED FORM SETTINGS BLOCK"
+        line: "\n"
+
+    - name: Initialize CKAN database
+      become: yes
+      ansible.builtin.command: ckan db init
+
+    - name: Reload Supervisor daemon
+      become: yes
+      ansible.builtin.command: supervisorctl reload
+
+    - name: Restart Nginx
+      become: yes
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+
+    - name: Add default admin user
+      become: yes
+      ansible.builtin.expect:
+        command: ckan -c /etc/ckan/default/ckan.ini sysadmin add admin email=admin@uu-ckan.test name=admin
+        responses:
+          Create new user: Y
+          Password: password
+          Repeat for confirmation: password
+
+    - name: Install ckanext-scheming extension
+      become: yes
+      ansible.builtin.pip:
+        name: git+https://github.com/ckan/ckanext-scheming.git#egg=ckanext-scheming
+        virtualenv: /usr/lib/ckan/default
+        editable: yes
+
+    # An SSH keypair with access to the uu-ckan repository should be placed in the provisioning/files/
+    # directory. The filenames of the keypair files must begin with id_ (e.g. id_rsa + id_rsa.pub).
+    # It is recommended, as a security precaution, to generate a dedicated CD² keypair (e.g. using
+    # ssh-keygen) and to restrict it's access to the cd2 repository.
+    - name: Get filenames of files of SSH keypair to copy
+      find:
+        paths: files/
+        patterns: ^id_
+        use_regex: yes
+      register: keypair_filenames
+      delegate_to: localhost
+
+    - name: Check if keypair files available
+      ansible.builtin.fail:
+        msg: No keypair files present in provisioning/files/!
+      when: not keypair_filenames.files
+
+    - name: Copy SSH keys
+      become: yes
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: /root/.ssh/
+        mode: preserve
+      with_items:
+        - "{{ keypair_filenames.files }}"
+
+    - name: Add SSH fingerprint of github.com to known_hosts
+      become: yes
+      shell: ssh-keyscan -H github.com >> /root/.ssh/known_hosts
+
+    - name: Install ckanext-msl_ckan_util repository
+      become: yes
+      ansible.builtin.pip:
+        name: git+ssh://git@github.com/UtrechtUniversity/msl_ckan_util.git#egg=ckanext-msl_ckan_util
+        virtualenv: /usr/lib/ckan/default
+        editable: yes
+
+    - name: Install ckanext-msl_ckan_util repository
+      become: yes
+      ansible.builtin.pip:
+        name: git+ssh://git@github.com/UtrechtUniversity/msl_ckan_util.git#egg=ckanext-msl_ckan_util
+        virtualenv: /usr/lib/ckan/default
+        editable: yes
+
+    - name: Install ckanext-msl_ckan repository
+      become: yes
+      ansible.builtin.pip:
+        name: git+ssh://git@github.com/UtrechtUniversity/cd2-config.git#egg=ckanext-msl_ckan
+        virtualenv: /usr/lib/ckan/default
+        editable: yes
+
+    - name: Install uu-ckan-theme repository
+      become: yes
+      ansible.builtin.pip:
+        name: git+ssh://git@github.com/UtrechtUniversity/uu-ckan-theme.git#egg=ckanext-uu_ckan_theme
+        virtualenv: /usr/lib/ckan/default
+        editable: yes
+        
+    - name: Copy new Solr schema file
+      become: yes
+      file:
+        src: /usr/lib/ckan/default/src/ckanext-msl-ckan/ckanext/msl_ckan/config/schema.xml
+        dest: /usr/lib/ckan/default/src/ckan/ckan/config/solr/schema.xml
+        state: link
+        force: yes
+
+    - name: Compile uu-ckan theme CSS
+      become: yes
+      ansible.builtin.command: lessc /usr/lib/ckan/default/src/ckanext-uu-ckan-theme/ckanext/uu_ckan_theme/less/main.less /usr/lib/ckan/default/src/ckanext-uu-ckan-theme/ckanext/uu_ckan_theme/fanstatic/uu-ckan-custom.css
+
+    - name: Enable ckanext-msl_ckan, ckanext-scheming and ckanext-msl_ckan_util plugins
+      become: yes
+      ansible.builtin.lineinfile:
+        path: /etc/ckan/default/ckan.ini
+        backrefs: yes
+        regexp: ^(ckan\.plugins = .* recline_view).*$
+        line: \1 uu_ckan_theme msl_ckan scheming_datasets scheming_groups scheming_organizations msl_custom_facets msl_repeating_fields
+
+
+    - name: Change default search parameter in the Solr config
+      become: yes
+      ansible.builtin.replace:
+        dest: /etc/solr/conf/solrconfig.xml
+        regexp: (^.*requestHandler name="/select"[\s\S]*name="rows".*\n.*name="df".*)
+        replace: \1\n       <str name="q.op">AND</str>
+
+    - name: Add ckanext-msl_ckan_util config settings
+      become: yes
+      ansible.builtin.blockinfile:
+        path: /etc/ckan/default/ckan.ini
+        insertafter: ^ckan\.plugins.*$
+        marker: "# {mark} ANSIBLE MANAGED MSL_CKAN BLOCK"
+        block: |
+          # msl_ckan settings
+          scheming.dataset_schemas      = ckanext.msl_ckan:schemas/datasets/cd2_data.collection.yml ckanext.msl_ckan:schemas/datasets/ddi_studyunit.yml ckanext.msl_ckan:schemas/datasets/ddi_group.yml ckanext.msl_ckan:schemas/datasets/cd2_study.yml
+          # msl_ckan_util settings
+          mslfacets.dataset_config      = ckanext.msl_ckan:config/facets.json
+          mslindexfields.field_config   = ckanext.msl_ckan:config/msl_index_fields.json
+
+    - name: Reload CKAN
+      become: yes
+      ansible.builtin.command: supervisorctl reload
+
+    - name: Restart Solr
+      become: yes
+      ansible.builtin.systemd:
+        name: tomcat9
+        state: restarted
+
+    - name: Restart Nginx
+      become: yes
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
